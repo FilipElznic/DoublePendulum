@@ -1,257 +1,247 @@
 import { useState, useEffect, useRef } from "react";
 import "./DoublePendulum.css";
 
-const DoublePendulum = () => {
-  // Constants from Phase 1
-  const ORIGIN_X = 400;
-  const ORIGIN_Y = 150;
-  // Pendulum parameters
-  const [params, setParams] = useState({
-    m1: 10, // mass of first bob
-    m2: 10, // mass of second bob
-    l1: 150, // length of first rod
-    l2: 150, // length of second rod
-    g: 9.81, // gravitational acceleration
-    damping: 1.0, // damping factor (1 = no damping, <1 = damping)
-  });
+// --- Constants ---
+const ORIGIN_X = 400;
+const ORIGIN_Y = 150;
+const DT = 0.016; // Physics timestep
+const MAX_TRAIL_LENGTH = 500;
 
-  // Fixed time step for physics
-  const DT = 0.01;
-  // Simulation State (useRef) - High-frequency physics updates without re-renders
-  const simState = useRef({
-    th1: Math.PI / 2, // Start at 90 degrees
-    w1: 0,
-    th2: Math.PI / 2 + 0.1, // Slight offset to create initial energy
-    w2: 0,
-    lastTime: 0,
-  });
+// --- Physics Equations ---
+const derivatives = (state, params) => {
+  const { th1, w1, th2, w2 } = state;
+  const { m1, m2, l1, l2, g } = params;
 
-  // Calculate initial positions
-  const getInitialPositions = () => {
-    const th1 = Math.PI / 2;
-    const th2 = Math.PI / 2 + 0.1;
-    const x1 = ORIGIN_X + params.l1 * Math.sin(th1);
-    const y1 = ORIGIN_Y + params.l1 * Math.cos(th1);
-    const x2 = x1 + params.l2 * Math.sin(th2);
-    const y2 = y1 + params.l2 * Math.cos(th2);
-    return { x1, y1, x2, y2 };
+  // Equations of motion for the angular accelerations (alpha1, alpha2)
+  // Derived from the Lagrangian formulation.
+
+  const dth = th1 - th2;
+
+  // Denominator for both alpha1 and alpha2
+  const den = 2 * m1 + m2 - m2 * Math.cos(2 * dth);
+
+  // Numerator for alpha1
+  const num1 =
+    -g * (2 * m1 + m2) * Math.sin(th1) -
+    m2 * g * Math.sin(th1 - 2 * th2) -
+    2 * Math.sin(dth) * m2 * (w2 * w2 * l2 + w1 * w1 * l1 * Math.cos(dth));
+  const alpha1 = num1 / (l1 * den);
+
+  // Numerator for alpha2
+  const num2 =
+    2 *
+    Math.sin(dth) *
+    (w1 * w1 * l1 * (m1 + m2) +
+      g * (m1 + m2) * Math.cos(th1) +
+      w2 * w2 * l2 * m2 * Math.cos(dth));
+  const alpha2 = num2 / (l2 * den);
+
+  // Return the derivatives [d(th1)/dt, d(w1)/dt, d(th2)/dt, d(w2)/dt]
+  return { dth1: w1, dw1: alpha1, dth2: w2, dw2: alpha2 };
+};
+
+// --- RK4 Integrator ---
+const rk4Step = (state, params, dt) => {
+  const k1 = derivatives(state, params);
+
+  const k2_state = {
+    th1: state.th1 + 0.5 * dt * k1.dth1,
+    w1: state.w1 + 0.5 * dt * k1.dw1,
+    th2: state.th2 + 0.5 * dt * k1.dth2,
+    w2: state.w2 + 0.5 * dt * k1.dw2,
+  };
+  const k2 = derivatives(k2_state, params);
+
+  const k3_state = {
+    th1: state.th1 + 0.5 * dt * k2.dth1,
+    w1: state.w1 + 0.5 * dt * k2.dw1,
+    th2: state.th2 + 0.5 * dt * k2.dth2,
+    w2: state.w2 + 0.5 * dt * k2.dw2,
+  };
+  const k3 = derivatives(k3_state, params);
+
+  const k4_state = {
+    th1: state.th1 + dt * k3.dth1,
+    w1: state.w1 + dt * k3.dw1,
+    th2: state.th2 + dt * k3.dth2,
+    w2: state.w2 + dt * k3.dw2,
+  };
+  const k4 = derivatives(k4_state, params);
+
+  // New state after one RK4 step
+  const newState = {
+    th1: state.th1 + (dt / 6) * (k1.dth1 + 2 * k2.dth1 + 2 * k3.dth1 + k4.dth1),
+    w1: state.w1 + (dt / 6) * (k1.dw1 + 2 * k2.dw1 + 2 * k3.dw1 + k4.dw1),
+    th2: state.th2 + (dt / 6) * (k1.dth2 + 2 * k2.dth2 + 2 * k3.dth2 + k4.dth2),
+    w2: state.w2 + (dt / 6) * (k1.dw2 + 2 * k2.dw2 + 2 * k3.dw2 + k4.dw2),
   };
 
-  // Render State (useState) - Low-frequency visual updates
-  const [positions, setPositions] = useState(getInitialPositions());
+  return newState;
+};
 
-  // Trail of the second bob
-  const [trail, setTrail] = useState([]);
-  const maxTrailLength = 500;
+// --- Helper Functions ---
+const computePositions = (th1, th2, l1, l2) => {
+  const x1 = ORIGIN_X + l1 * Math.sin(th1);
+  const y1 = ORIGIN_Y + l1 * Math.cos(th1);
+  const x2 = x1 + l2 * Math.sin(th2);
+  const y2 = y1 + l2 * Math.cos(th2);
+  return { x1, y1, x2, y2 };
+};
 
-  // Animation control
-  const [isRunning, setIsRunning] = useState(false);
+const normalizeAngle = (angle) => {
+  return angle % (2 * Math.PI);
+};
+
+// --- React Component ---
+const DoublePendulum = () => {
+  // --- State Management ---
+  const [params, setParams] = useState({
+    m1: 10,
+    m2: 10,
+    l1: 150,
+    l2: 150,
+    g: 9.81,
+    damping: 1.0,
+    speed: 1.0,
+  });
+
+  const simState = useRef({
+    th1: Math.PI / 2,
+    w1: 0,
+    th2: Math.PI / 2,
+    w2: 0,
+    lastTime: 0,
+    accumulator: 0,
+  });
+
+  const [positions, setPositions] = useState(() =>
+    computePositions(
+      simState.current.th1,
+      simState.current.th2,
+      params.l1,
+      params.l2
+    )
+  );
+  const [trail1, setTrail1] = useState([]);
+  const [trail2, setTrail2] = useState([]);
+  const [isRunning, setIsRunning] = useState(true);
   const animFrameId = useRef(null);
-  const paramsRef = useRef(params);
 
-  // Keep params ref in sync
+  // --- Animation Loop ---
   useEffect(() => {
-    paramsRef.current = params;
-  }, [params]);
-
-  // The Animation Loop (useEffect)
-  useEffect(() => {
-    if (!isRunning) {
-      if (animFrameId.current) {
-        cancelAnimationFrame(animFrameId.current);
-        animFrameId.current = null;
-      }
-      return;
-    }
-
-    // RK4 solver inside useEffect to have access to current params
-    const rk4Step = (currentState, dt) => {
-      const [th1, w1, th2, w2] = currentState;
-      const { m1, m2, l1, l2, g, damping } = paramsRef.current;
-
-      // Derivatives function for the double pendulum equations of motion
-      const derivatives = (th1, th2, om1, om2) => {
-        // For alpha1 (angular acceleration of bob 1)
-        const num1 =
-          -g * (2 * m1 + m2) * Math.sin(th1) -
-          m2 * g * Math.sin(th1 - 2 * th2) -
-          2 *
-            Math.sin(th1 - th2) *
-            m2 *
-            (om2 * om2 * l2 + om1 * om1 * l1 * Math.cos(th1 - th2));
-
-        const den1 = l1 * (2 * m1 + m2 - m2 * Math.cos(2 * th1 - 2 * th2));
-        const alpha1 = num1 / den1;
-
-        // For alpha2 (angular acceleration of bob 2)
-        const num2 =
-          2 *
-          Math.sin(th1 - th2) *
-          (om1 * om1 * l1 * (m1 + m2) +
-            g * (m1 + m2) * Math.cos(th1) +
-            om2 * om2 * l2 * m2 * Math.cos(th1 - th2));
-
-        const den2 = l2 * (2 * m1 + m2 - m2 * Math.cos(2 * th1 - 2 * th2));
-        const alpha2 = num2 / den2;
-
-        return [om1, alpha1, om2, alpha2];
-      };
-
-      // RK4 implementation
-      const k1 = derivatives(th1, th2, w1, w2);
-
-      const k2 = derivatives(
-        th1 + 0.5 * dt * k1[0],
-        th2 + 0.5 * dt * k1[2],
-        w1 + 0.5 * dt * k1[1],
-        w2 + 0.5 * dt * k1[3]
-      );
-
-      const k3 = derivatives(
-        th1 + 0.5 * dt * k2[0],
-        th2 + 0.5 * dt * k2[2],
-        w1 + 0.5 * dt * k2[1],
-        w2 + 0.5 * dt * k2[3]
-      );
-
-      const k4 = derivatives(
-        th1 + dt * k3[0],
-        th2 + dt * k3[2],
-        w1 + dt * k3[1],
-        w2 + dt * k3[3]
-      );
-
-      // Calculate new state
-      const newTh1 = th1 + (dt / 6) * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]);
-      const newW1 =
-        (w1 + (dt / 6) * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1])) * damping;
-      const newTh2 = th2 + (dt / 6) * (k1[2] + 2 * k2[2] + 2 * k3[2] + k4[2]);
-      const newW2 =
-        (w2 + (dt / 6) * (k1[3] + 2 * k2[3] + 2 * k3[3] + k4[3])) * damping;
-
-      return [newTh1, newW1, newTh2, newW2];
-    };
-
-    // Main loop function
     const animate = (timestamp) => {
-      // 1. Calculate Time Delta
+      if (!isRunning) {
+        simState.current.lastTime = 0; // Reset time when paused
+        return;
+      }
+
       if (!simState.current.lastTime) {
         simState.current.lastTime = timestamp;
         animFrameId.current = requestAnimationFrame(animate);
         return;
       }
 
-      let deltaTime = (timestamp - simState.current.lastTime) / 1000; // in seconds
-      simState.current.lastTime = timestamp; // 2. Run Fixed-Step Physics Update
-      let accumulator = deltaTime;
-      let stepCount = 0;
+      let deltaTime = (timestamp - simState.current.lastTime) / 1000;
+      simState.current.lastTime = timestamp;
+      simState.current.accumulator += deltaTime * params.speed;
 
-      while (accumulator >= DT) {
-        // Get current state
-        const currentState = [
-          simState.current.th1,
-          simState.current.w1,
-          simState.current.th2,
-          simState.current.w2,
-        ];
-
-        // Get new state from RK4 solver
-        const newState = rk4Step(currentState, DT);
-
-        // Mutate the ref directly (no re-render)
-        simState.current.th1 = newState[0];
-        simState.current.w1 = newState[1];
-        simState.current.th2 = newState[2];
-        simState.current.w2 = newState[3];
-
-        accumulator -= DT;
-        stepCount++;
-      }
-
-      // Debug logging every 60 frames (~1 second)
-      if (Math.random() < 0.016) {
-        console.log("Physics state:", {
+      // Fixed-step physics updates
+      while (simState.current.accumulator >= DT) {
+        const currentState = {
           th1: simState.current.th1,
           w1: simState.current.w1,
           th2: simState.current.th2,
           w2: simState.current.w2,
-          steps: stepCount,
-        });
-      } // 3. Calculate Render Positions (Cartesian Conversion)
-      const { th1, th2 } = simState.current;
-      const { l1, l2 } = paramsRef.current;
+        };
 
-      const x1 = ORIGIN_X + l1 * Math.sin(th1);
-      const y1 = ORIGIN_Y + l1 * Math.cos(th1);
-      const x2 = x1 + l2 * Math.sin(th2);
-      const y2 = y1 + l2 * Math.cos(th2);
+        let newState = rk4Step(currentState, params, DT);
 
-      // Debug positions
-      if (Math.random() < 0.016) {
-        console.log("Render positions:", { x1, y1, x2, y2 });
+        // Apply damping
+        newState.w1 *= params.damping;
+        newState.w2 *= params.damping;
+
+        // Update simulation state
+        simState.current.th1 = normalizeAngle(newState.th1);
+        simState.current.w1 = newState.w1;
+        simState.current.th2 = normalizeAngle(newState.th2);
+        simState.current.w2 = newState.w2;
+
+        simState.current.accumulator -= DT;
       }
 
-      // 4. Update Render State (Triggers ONE re-render)
-      setPositions({ x1, y1, x2, y2 });
+      // Update render state
+      const newPositions = computePositions(
+        simState.current.th1,
+        simState.current.th2,
+        params.l1,
+        params.l2
+      );
+      setPositions(newPositions);
 
-      // Update trail
-      setTrail((prev) => {
-        const newTrail = [...prev, { x: x2, y: y2 }];
-        if (newTrail.length > maxTrailLength) {
-          return newTrail.slice(newTrail.length - maxTrailLength);
-        }
-        return newTrail;
+      setTrail1((prev) => {
+        const newTrail = [...prev, { x: newPositions.x1, y: newPositions.y1 }];
+        return newTrail.length > MAX_TRAIL_LENGTH
+          ? newTrail.slice(newTrail.length - MAX_TRAIL_LENGTH)
+          : newTrail;
       });
 
-      // 5. Continue Loop
+      setTrail2((prev) => {
+        const newTrail = [...prev, { x: newPositions.x2, y: newPositions.y2 }];
+        return newTrail.length > MAX_TRAIL_LENGTH
+          ? newTrail.slice(newTrail.length - MAX_TRAIL_LENGTH)
+          : newTrail;
+      });
+
       animFrameId.current = requestAnimationFrame(animate);
-    }; // Start the loop
-    console.log("Starting animation loop");
+    };
+
     animFrameId.current = requestAnimationFrame(animate);
 
-    // 6. Cleanup Function
     return () => {
       if (animFrameId.current) {
         cancelAnimationFrame(animFrameId.current);
       }
     };
-  }, [isRunning]); // Run when isRunning changes
-  // Handler functions
+  }, [isRunning, params]);
+
+  // --- UI Handlers ---
   const handleReset = () => {
-    simState.current.th1 = Math.PI / 2;
-    simState.current.w1 = 0;
-    simState.current.th2 = Math.PI / 2 + 0.1; // Slight offset for initial energy
-    simState.current.w2 = 0;
-    simState.current.lastTime = 0;
-    setTrail([]);
+    simState.current = {
+      th1: Math.PI / 2,
+      w1: 0,
+      th2: Math.PI / 2,
+      w2: 0,
+      lastTime: 0,
+      accumulator: 0,
+    };
+    setTrail1([]);
+    setTrail2([]);
   };
 
   const handleRandomize = () => {
-    simState.current.th1 = Math.random() * Math.PI * 2 - Math.PI;
-    simState.current.w1 = 0;
-    simState.current.th2 = Math.random() * Math.PI * 2 - Math.PI;
-    simState.current.w2 = 0;
-    simState.current.lastTime = 0;
-    setTrail([]);
+    simState.current = {
+      th1: Math.random() * 2 * Math.PI,
+      w1: 0,
+      th2: Math.random() * 2 * Math.PI,
+      w2: 0,
+      lastTime: 0,
+      accumulator: 0,
+    };
+    setTrail1([]);
+    setTrail2([]);
   };
 
   const handleParamChange = (param, value) => {
-    setParams((prev) => ({
-      ...prev,
-      [param]: parseFloat(value),
-    }));
+    setParams((prev) => ({ ...prev, [param]: parseFloat(value) }));
   };
 
-  const handleClearTrail = () => {
-    setTrail([]);
-  };
-
+  // --- Render ---
   return (
     <div className="double-pendulum-container">
-      <h1>Double Pendulum Simulation</h1>
-
+      <h1>Double Pendulum Simulation (From Scratch)</h1>
       <div className="content-wrapper">
         <div className="controls-panel">
+          {/* Animation Controls */}
           <div className="control-section">
             <h3>Animation Controls</h3>
             <div className="button-group">
@@ -267,179 +257,98 @@ const DoublePendulum = () => {
               <button className="btn btn-random" onClick={handleRandomize}>
                 🎲 Random
               </button>
-              <button className="btn btn-clear" onClick={handleClearTrail}>
+              <button
+                className="btn btn-clear"
+                onClick={() => {
+                  setTrail1([]);
+                  setTrail2([]);
+                }}
+              >
                 🗑 Clear Trail
               </button>
             </div>
           </div>
+
+          {/* Parameters */}
           <div className="control-section">
             <h3>Pendulum Parameters</h3>
-            <div className="param-control">
-              <label>
-                Mass 1: <span className="value">{params.m1} kg</span>
-              </label>
-              <input
-                type="range"
-                min="1"
-                max="20"
-                step="0.5"
-                value={params.m1}
-                onChange={(e) => handleParamChange("m1", e.target.value)}
-              />
-            </div>
-            <div className="param-control">
-              <label>
-                Mass 2: <span className="value">{params.m2} kg</span>
-              </label>
-              <input
-                type="range"
-                min="1"
-                max="20"
-                step="0.5"
-                value={params.m2}
-                onChange={(e) => handleParamChange("m2", e.target.value)}
-              />
-            </div>
-            <div className="param-control">
-              <label>
-                Length 1: <span className="value">{params.l1} px</span>
-              </label>
-              <input
-                type="range"
-                min="50"
-                max="250"
-                step="10"
-                value={params.l1}
-                onChange={(e) => handleParamChange("l1", e.target.value)}
-              />
-            </div>
-            <div className="param-control">
-              <label>
-                Length 2: <span className="value">{params.l2} px</span>
-              </label>
-              <input
-                type="range"
-                min="50"
-                max="250"
-                step="10"
-                value={params.l2}
-                onChange={(e) => handleParamChange("l2", e.target.value)}
-              />
-            </div>
-            <div className="param-control">
-              <label>
-                Gravity: <span className="value">{params.g} m/s²</span>
-              </label>
-              <input
-                type="range"
-                min="0"
-                max="20"
-                step="0.1"
-                value={params.g}
-                onChange={(e) => handleParamChange("g", e.target.value)}
-              />
-            </div>{" "}
-            <div className="param-control">
-              <label>
-                Damping:{" "}
-                <span className="value">{params.damping.toFixed(4)}</span>
-              </label>
-              <input
-                type="range"
-                min="0.98"
-                max="1.0"
-                step="0.001"
-                value={params.damping}
-                onChange={(e) => handleParamChange("damping", e.target.value)}
-              />
-            </div>
-          </div>{" "}
-          <div className="control-section">
-            <h3>Energy & State</h3>
-            <div className="info-display">
-              <p>θ₁: {((simState.current.th1 * 180) / Math.PI).toFixed(1)}°</p>
-              <p>θ₂: {((simState.current.th2 * 180) / Math.PI).toFixed(1)}°</p>
-              <p>ω₁: {simState.current.w1.toFixed(3)} rad/s</p>
-              <p>ω₂: {simState.current.w2.toFixed(3)} rad/s</p>
-            </div>
+            {Object.keys(params).map((key) => {
+              const defs = {
+                m1: { min: 1, max: 20, step: 0.5, unit: "kg" },
+                m2: { min: 1, max: 20, step: 0.5, unit: "kg" },
+                l1: { min: 50, max: 250, step: 10, unit: "px" },
+                l2: { min: 50, max: 250, step: 10, unit: "px" },
+                g: { min: 0, max: 20, step: 0.1, unit: "m/s²" },
+                damping: { min: 0.99, max: 1.0, step: 0.0001, unit: "" },
+                speed: { min: 0.1, max: 5, step: 0.1, unit: "x" },
+              };
+              return (
+                <div className="param-control" key={key}>
+                  <label>
+                    {key}:{" "}
+                    <span className="value">
+                      {params[key]} {defs[key].unit}
+                    </span>
+                  </label>
+                  <input
+                    type="range"
+                    min={defs[key].min}
+                    max={defs[key].max}
+                    step={defs[key].step}
+                    value={params[key]}
+                    onChange={(e) => handleParamChange(key, e.target.value)}
+                  />
+                </div>
+              );
+            })}
           </div>
         </div>
 
+        {/* Simulation SVG */}
         <div className="simulation-container">
           <svg width={800} height={600} className="pendulum-svg">
-            {/* Trail */}
-            {trail.length > 1 && (
-              <polyline
-                points={trail.map((p) => `${p.x},${p.y}`).join(" ")}
-                className="trail"
-                fill="none"
-                stroke="rgba(255, 100, 100, 0.3)"
-                strokeWidth="2"
-              />
-            )}
-
-            {/* Pivot Point (Origin) */}
-            <circle
-              cx={ORIGIN_X}
-              cy={ORIGIN_Y}
-              r="6"
-              className="origin"
-              fill="black"
+            {/* Trails first, so they are in the background */}
+            <polyline
+              points={trail1.map((p) => `${p.x},${p.y}`).join(" ")}
+              className="trail trail1"
+            />
+            <polyline
+              points={trail2.map((p) => `${p.x},${p.y}`).join(" ")}
+              className="trail trail2"
             />
 
-            {/* Rod 1 */}
+            {/* Rods */}
             <line
               x1={ORIGIN_X}
               y1={ORIGIN_Y}
               x2={positions.x1}
               y2={positions.y1}
               className="rod"
-              stroke="#333"
-              strokeWidth="3"
             />
-
-            {/* Bob 1 */}
-            <circle
-              cx={positions.x1}
-              cy={positions.y1}
-              r={Math.sqrt(params.m1) * 3}
-              className="bob bob1"
-              fill="#4A90E2"
-              stroke="#2C5F8D"
-              strokeWidth="2"
-            />
-
-            {/* Rod 2 */}
             <line
               x1={positions.x1}
               y1={positions.y1}
               x2={positions.x2}
               y2={positions.y2}
               className="rod"
-              stroke="#555"
-              strokeWidth="3"
             />
 
-            {/* Bob 2 */}
+            {/* Bobs and Origin on top */}
+            <circle
+              cx={positions.x1}
+              cy={positions.y1}
+              r={Math.sqrt(params.m1) * 3}
+              className="bob"
+            />
             <circle
               cx={positions.x2}
               cy={positions.y2}
               r={Math.sqrt(params.m2) * 3}
-              className="bob bob2"
-              fill="#E74C3C"
-              stroke="#C0392B"
-              strokeWidth="2"
+              className="bob"
             />
+            <circle cx={ORIGIN_X} cy={ORIGIN_Y} r="6" className="origin" />
           </svg>
         </div>
-      </div>
-
-      <div className="info-section">
-        <p className="description">
-          A double pendulum is a chaotic system where two pendulums are attached
-          end-to-end. Small changes in initial conditions lead to vastly
-          different outcomes, demonstrating chaos theory.
-        </p>
       </div>
     </div>
   );

@@ -244,11 +244,26 @@ h1 {
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.05));
 }
 
+.origin {
+  fill: #f7fafc;
+}
+
 .trail {
-  opacity: 0.6;
+  stroke-width: 2;
+  fill: none;
+}
+
+.trail1 {
+  stroke: rgba(100, 100, 255, 0.4);
+}
+
+.trail2 {
+  stroke: rgba(255, 100, 100, 0.4);
 }
 
 .rod {
+  stroke: #333;
+  stroke-width: 4px;
   stroke-linecap: round;
 }
 
