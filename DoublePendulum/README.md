@@ -1,16 +1,51 @@
-# React + Vite
+# 🎮 Double Pendulum Simulator
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A mesmerizing retro-styled physics simulation of a double pendulum system, featuring chaotic motion and beautiful trail patterns.
 
-Currently, two official plugins are available:
+## ✨ Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Realistic Physics**: Implements the Runge-Kutta 4th order (RK4) numerical integration method for accurate simulation of the double pendulum's equations of motion
+- **Retro Aesthetic**: Classic terminal-style interface with neon cyan, magenta, and yellow colors reminiscent of 80s/90s computer graphics
+- **Interactive Controls**: Real-time parameter adjustment for masses, lengths, gravity, damping, and simulation speed
+- **Visual Trails**: Beautiful colored trails that follow the pendulum masses, creating mesmerizing patterns
+- **Chaos Theory Visualization**: Demonstrates the chaotic nature of the double pendulum system
 
-## React Compiler
+## 🎯 Physics
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+The double pendulum is a classic example of a chaotic dynamical system. Small changes in initial conditions lead to drastically different outcomes, making long-term prediction impossible. The simulation uses the Lagrangian formulation to derive the equations of motion.
 
-## Expanding the ESLint configuration
+## 🎨 Controls
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- **Start/Pause**: Control the animation
+- **Reset**: Return to default starting position
+- **Random**: Set random initial angles
+- **Clear Trail**: Remove the visual trails
+- **Sliders**: Adjust masses (m1, m2), lengths (l1, l2), gravity (g), damping, and speed (up to 20x)
+
+## 🚀 Getting Started
+
+```bash
+# Install dependencies
+npm install
+
+# Run development server
+npm run dev
+
+# Build for production
+npm run build
+```
+
+## 🛠️ Tech Stack
+
+- React + Vite
+- Pure CSS animations with scanline effects
+- Custom physics engine from scratch
+- VT323 retro font
+
+## 📝 License
+
+Feel free to use and modify this project for educational purposes.
+
+---
+
+_Experience the beauty of chaos and deterministic unpredictability!_

@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import "./DoublePendulum.css";
 
 // --- Constants ---
-const ORIGIN_X = 400;
-const ORIGIN_Y = 150;
+const ORIGIN_X = 500;
+const ORIGIN_Y = 300;
 const DT = 0.016; // Physics timestep
 const MAX_TRAIL_LENGTH = 500;
 
@@ -102,7 +102,7 @@ const DoublePendulum = () => {
     l2: 150,
     g: 9.81,
     damping: 1.0,
-    speed: 1.0,
+    speed: 5.0,
   });
 
   const simState = useRef({
@@ -238,7 +238,7 @@ const DoublePendulum = () => {
   // --- Render ---
   return (
     <div className="double-pendulum-container">
-      <h1>Double Pendulum Simulation (From Scratch)</h1>
+      <h1>Double Pendulum Simulation </h1>
       <div className="content-wrapper">
         <div className="controls-panel">
           {/* Animation Controls */}
@@ -280,7 +280,7 @@ const DoublePendulum = () => {
                 l2: { min: 50, max: 250, step: 10, unit: "px" },
                 g: { min: 0, max: 20, step: 0.1, unit: "m/s²" },
                 damping: { min: 0.99, max: 1.0, step: 0.0001, unit: "" },
-                speed: { min: 0.1, max: 5, step: 0.1, unit: "x" },
+                speed: { min: 0.1, max: 20, step: 0.1, unit: "x" },
               };
               return (
                 <div className="param-control" key={key}>
